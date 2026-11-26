@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "des-from-scratch"
+version = "1.0.0"
+description = "DES y Triple DES implementados desde cero según FIPS 46-3, con modos ECB y CBC y traza de rondas, con fines educativos."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Kevin Andrey Herrera Silva", email = "kahs_kevin@hotmail.com" }]
+requires-python = ">=3.12"
+keywords = ["des", "triple-des", "feistel-network", "block-cipher", "cryptography"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.scripts]
+des = "des.cli:main"
+
+[project.urls]
+Repository = "https://github.com/KevinAndrey96/python-des-block-cipher-from-scratch"
+
+[dependency-groups]
+dev = [
+    "cryptography>=50",
+    "hypothesis>=6.170.17",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/des"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PT", "RUF", "N", "PL", "ARG", "RET"]
+ignore = ["PLR2004"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["des"]
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
