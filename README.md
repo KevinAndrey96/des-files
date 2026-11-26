@@ -1,100 +1,117 @@
-# Cifrado y Descifrado de Archivos con DES (Modo CBC) en Python
+# DES y Triple DES desde cero en Python
 
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
-[![Cryptography](https://img.shields.io/badge/Cryptography-DES--CBC-orange.svg)](https://en.wikipedia.org/wiki/Data_Encryption_Standard)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/KevinAndrey96/python-des-block-cipher-from-scratch/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinAndrey96/python-des-block-cipher-from-scratch/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-3776AB)
+![Cobertura](https://img.shields.io/badge/cobertura-100%25-brightgreen)
+![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
+[![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-yellow.svg)](LICENSE)
 
-Implementación didáctica e interactiva en Python para el cifrado y descifrado de archivos binarios utilizando el algoritmo simétrico **DES (Data Encryption Standard)** en modo **CBC (Cipher Block Chaining)** con vector de inicialización (IV), relleno **PKCS#5** y serialización **Base64**.
+Implementación didáctica del **Data Encryption Standard** escrita directamente a partir de [FIPS PUB 46-3](https://csrc.nist.gov/pubs/fips/46-3/final): permutaciones, expansión, cajas S, red de Feistel de 16 rondas y programación de claves, más **Triple DES** (EDE, NIST SP 800-67), los modos **ECB** y **CBC** con relleno PKCS #7 y una traza ronda a ronda. Cada bloque coincide con OpenSSL en cientos de casos aleatorios por ejecución de las pruebas.
 
----
+> **Solo para estudio.** DES tiene una clave efectiva de 56 bits y fue roto por búsqueda exhaustiva en 1998; NIST retiró Triple DES para cifrar datos nuevos desde 2024. Esta implementación tampoco es de tiempo constante. Para proteger archivos de verdad, usa [python-aes-gcm-file-encryption](https://github.com/KevinAndrey96/python-aes-gcm-file-encryption).
 
-## 🔐 Fundamento Criptográfico e Histórico
+## Contenido
 
-Publicado en 1977 como estándar federal (**FIPS PUB 46**) desarrollado por IBM, **DES** es uno de los algoritmos fundamentales en la historia de la criptografía moderna de clave simétrica basada en la red de Feistel.
+- [Cómo funciona DES](#cómo-funciona-des)
+- [Propiedades que verifican las pruebas](#propiedades-que-verifican-las-pruebas)
+- [Uso](#uso)
+- [Arquitectura](#arquitectura)
+- [Pruebas y calidad](#pruebas-y-calidad)
+- [Historia del proyecto](#historia-del-proyecto)
 
-### 1. Parámetros del Algoritmo DES
+## Cómo funciona DES
 
-- **Tamaño de Bloque**: 64 bits (8 bytes).
-- **Longitud de Clave Nominal**: 64 bits (8 caracteres), de los cuales 56 bits corresponden a entropía efectiva y 8 bits son bits de paridad.
-- **Rondas de Feistel**: 16 rondas con generación de subclaves de 48 bits mediante permutaciones con compresión (PC-1 y PC-2) y cajas de sustitución no lineales (S-Boxes).
+Un bloque de 64 bits pasa por la permutación inicial $IP$, se divide en mitades $L_0, R_0$ de 32 bits y recorre 16 rondas de Feistel:
 
-### 2. Modo de Operación CBC (Cipher Block Chaining)
+$$
+L_i = R_{i-1}, \qquad R_i = L_{i-1} \oplus f(R_{i-1}, K_i), \qquad
+f(R, K) = P\big(S(E(R) \oplus K)\big).
+$$
 
-El modo CBC encadena cada bloque de texto plano con el bloque cifrado inmediatamente anterior mediante una operación XOR ($\oplus$) antes de aplicar la transformación DES. Esto garantiza que bloques idénticos de texto plano produzcan bloques de texto cifrado completamente diferentes:
+$E$ expande la mitad a 48 bits, se mezcla con la subclave $K_i$, las ocho cajas S reducen cada grupo de 6 bits a 4 (la única parte no lineal del cifrado) y $P$ permuta el resultado. Al final se intercambian las mitades y se aplica $IP^{-1}$. Las 16 subclaves de 48 bits salen de la clave de 64 bits: $PC_1$ descarta los 8 bits de paridad, dos registros de 28 bits rotan 1 o 2 posiciones por ronda y $PC_2$ elige 48 bits. Descifrar es la misma red con las subclaves en orden inverso.
 
-$$C_0 = \text{DES}_K(P_0 \oplus \text{IV})$$
-$$C_i = \text{DES}_K(P_i \oplus C_{i-1}), \quad i \ge 1$$
-
-Para el descifrado:
-
-$$P_0 = \text{DES}^{-1}_K(C_0) \oplus \text{IV}$$
-$$P_i = \text{DES}^{-1}_K(C_i) \oplus C_{i-1}, \quad i \ge 1$$
-
-El script implementa un Vector de Inicialización (IV) de 8 bytes y relleno conforme al estándar **PKCS#5** para alinear el tamaño del mensaje a múltiplos exactos de 8 bytes.
-
-> [!NOTE]
-> Debido al tamaño de clave efectivo de 56 bits, DES es vulnerable a ataques de fuerza bruta en hardware moderno y fue sucedido formalmente por AES. Este repositorio tiene un propósito puramente educativo, histórico y de análisis forense computacional.
-
----
-
-## 📂 Estructura del Repositorio
+La traza del ejemplo clásico (clave `133457799BBCDFF1`, bloque `0123456789ABCDEF`):
 
 ```text
-des-files/
-├── main.py        # Script interactivo de consola para cifrar y descifrar
-├── imagen.jpg     # Archivo de imagen de prueba para validacion
-└── Video.txt      # Enlace a demostracion multimedia en YouTube
+ronda  1  K=1B02EFFC7072  L=F0AAF0AA  R=EF4A6544
+ronda  2  K=79AED9DBC9E5  L=EF4A6544  R=CC017709
+...
+ronda 16  K=CB3D8B0E17F5  L=43423234  R=0A4CD995
+salida    85E813540F0AB405
 ```
 
----
+Triple DES aplica $C = E_{K_3}\big(D_{K_2}(E_{K_1}(P))\big)$. Con claves de 16 bytes se usa $K_3 = K_1$, y con $K_1 = K_2 = K_3$ equivale a DES simple, la compatibilidad hacia atrás que motivó el diseño EDE.
 
-## 🚀 Requisitos e Instalación
+## Propiedades que verifican las pruebas
 
-### Prerrequisitos
+- **Vectores publicados**: el ejemplo de FIPS y de la literatura, el vector `Now is t` de NIST, vectores de bit variable de NIST SP 800-17 y el ejemplo de Triple DES de SP 800-67.
+- **Oráculo independiente**: Hypothesis genera claves y bloques aleatorios y compara DES, Triple DES y CBC con OpenSSL a través de `cryptography`.
+- **Complementación**: $E_{\overline{K}}(\overline{P}) = \overline{E_K(P)}$, la simetría que reduce a la mitad el costo de la búsqueda exhaustiva.
+- **Claves débiles**: con `0101010101010101` y similares todas las subclaves son iguales, así que cifrar dos veces devuelve el original.
+- **ECB frente a CBC**: bloques iguales producen cifrados iguales en ECB y distintos en CBC.
 
-- **Python** (versión 3.8 o superior).
+## Uso
 
-### Instalación de Dependencias
-
-El script requiere el paquete `pyDes`:
+Requiere Python 3.12 o superior y [uv](https://docs.astral.sh/uv/). Las claves se dan en hexadecimal: 8 bytes para DES, 16 o 24 para Triple DES.
 
 ```bash
-pip install pyDes
+uv sync
+uv run des block -k 133457799BBCDFF1 0123456789ABCDEF
+# 85E813540F0AB405
+uv run des block -k 133457799BBCDFF1 --decrypt 85E813540F0AB405
+# 0123456789ABCDEF
+uv run des trace -k 133457799BBCDFF1 0123456789ABCDEF
+uv run des encrypt -k 133457799BBCDFF1 "mensaje secreto"
+# IV aleatorio de 8 bytes seguido del criptograma, en hex
+uv run des decrypt -k 133457799BBCDFF1 <hex anterior>
+# mensaje secreto
 ```
 
----
+`encrypt` y `decrypt` usan CBC por defecto con un IV aleatorio antepuesto al resultado; con `--iv` se fija el vector y la salida es solo el criptograma, y `--mode ecb` existe para comparar. Una clave débil produce un aviso; una clave, bloque o relleno inválidos terminan con código 2 y un mensaje en la salida de error.
 
-## 💻 Guía de Uso
+Como librería:
 
-Ejecuta el script principal desde tu terminal:
+```python
+from des import DES, TripleDES, decrypt_cbc, encrypt_cbc
+
+DES(bytes.fromhex("133457799BBCDFF1")).encrypt_block(bytes.fromhex("0123456789ABCDEF")).hex()
+# '85e813540f0ab405'
+
+clave = TripleDES(bytes.fromhex("0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123"))
+cifrado = encrypt_cbc(clave, b"\x00" * 8, b"hola")
+decrypt_cbc(clave, b"\x00" * 8, cifrado)   # b'hola'
+```
+
+## Arquitectura
+
+```text
+src/des/
+  tables.py   tablas de FIPS 46-3 tal como aparecen en el estándar
+  cipher.py   permutaciones, programación de claves, Feistel, DES, Triple DES y traza
+  modes.py    PKCS #7, ECB y CBC para cualquier cifrador de bloque de 64 bits
+  cli.py      comandos block, trace, encrypt y decrypt
+```
+
+El paquete no tiene dependencias; `cryptography` se usa solo en las pruebas como referencia. Los errores se reportan con `KeySizeError` y `PaddingError`, subclases de `ValueError`.
+
+## Pruebas y calidad
 
 ```bash
-python main.py
+uv run pytest --cov
+uv run ruff check src tests && uv run ruff format --check src tests
+uv run mypy
 ```
 
-### 1. Cifrar un Archivo
+39 pruebas con cobertura del 100 % de líneas y ramas. El pipeline de GitHub Actions ejecuta Ruff y mypy en modo estricto, las pruebas en Python 3.12, 3.13 y 3.14, una prueba de humo del comando instalado y la construcción del paquete con `twine check`.
 
-1. Selecciona la opción `1`.
-2. Ingresa el nombre del archivo a cifrar (ejemplo: `imagen.jpg`).
-3. Ingresa una clave secreta de exactamente **8 caracteres** (8 bytes) (ejemplo: `DESCRYPT`).
-4. El script leerá el archivo, lo serializará a Base64, aplicará el cifrado DES-CBC con padding PKCS#5 y sobrescribirá el archivo con los bytes cifrados.
+## Historia del proyecto
 
-### 2. Descifrar un Archivo
+El proyecto nació en abril de 2020 como laboratorio de la clase de criptografía, acompañado de un [video explicativo](https://youtu.be/hylTwYFX2Ko): un script que cifraba una imagen con la librería `pyDes` en modo CBC, con un vector de inicialización fijo y la imagen convertida a base64 antes de cifrar. En 2026 se reescribió para que el algoritmo deje de ser una caja negra: DES y Triple DES implementados desde el estándar, modos de operación propios, traza de rondas y verificación contra OpenSSL; además se eliminaron del historial el entorno virtual, los archivos del IDE y la imagen de prueba que se habían versionado. El código original se conserva en el tag [`v0.1-python-coursework-2020`](https://github.com/KevinAndrey96/python-des-block-cipher-from-scratch/tree/v0.1-python-coursework-2020).
 
-1. Selecciona la opción `2`.
-2. Ingresa el nombre del archivo cifrado.
-3. Proporciona la misma clave de 8 caracteres.
-4. El contenido será descifrado e interpretado en Base64 para reconstruir el archivo binario original en su forma intacta.
+## Autor
 
----
+**Kevin Andrey Herrera Silva** · [GitHub](https://github.com/KevinAndrey96)
 
-## 📹 Demostración en Video
+## Licencia
 
-Demostración práctica del funcionamiento paso a paso en YouTube:
-[Demostración en YouTube](https://youtu.be/hylTwYFX2Ko)
-
----
-
-## 📄 Licencia
-
-Distribuido bajo la Licencia MIT. Consulta el archivo `LICENSE` para más información.
+Distribuido bajo la [licencia MIT](LICENSE).
